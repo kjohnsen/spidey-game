@@ -16,7 +16,7 @@
   const GAME_SPEED = 400;
   const GROUND_Y = 350;
 
-  // Physics state (Non-reactive for performance)
+  // Physics state
   let playerWorldX = 100;
   let playerWorldY = GROUND_Y;
   let playerVx = GAME_SPEED;
@@ -24,14 +24,18 @@
   let cameraX = 0;
   
   let isSwinging = false;
+  let isZiplining = false;
+  let ziplineAnchorWorldX = 0;
+  let ziplineAnchorWorldY = 0;
   let anchorWorldX = 0;
   let anchorWorldY = 0;
   let webLength = 0;
   let isActionPressed = false;
   
   let touchStartX = 0;
+  let touchStartY = 0;
 
-  interface Obstacle { worldX: number; width: number; height: number; type: 'hydrant' | 'trash'; }
+  interface Obstacle { worldX: number; width: number; height: number; type: 'hydrant' | 'trash' | 'tentacle'; }
   let obstacles: Obstacle[] = [];
   let nextObstacleWorldX = 800;
 
@@ -40,27 +44,85 @@
   let nextCollectibleWorldX = 600;
 
   // Boss state
-  let goblinActive = false;
-  let goblinHealth = 3;
-  let goblinPhase = 0;
-  let goblinDefeated = false;
+  let villainQueue: string[] = [];
+  let activeVillain: string | null = null;
+  let activeVillainHealth = 0;
+  let bossPhase = 0;
+  let nextVillainScoreThreshold = 1000;
   
-  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; }
+  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; isAcid?: boolean; }
   let projectiles: Projectile[] = [];
   let attackProjectiles: Projectile[] = [];
 
-  // Pseudo-random hash for varied but persistent heights
+  // Audio System
+  let audioCtx: AudioContext | null = null;
+  function initAudio() {
+    if (typeof window !== 'undefined' && !audioCtx) {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playSound(type: 'jump' | 'shoot' | 'hit' | 'collect' | 'bomb') {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    if (type === 'jump') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'shoot') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.1);
+      gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'hit') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'collect') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.05);
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'bomb') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(50, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 0.3);
+      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    }
+  }
+
   const hash = (n: number) => { let s = Math.sin(n) * 43758.5453123; return s - Math.floor(s); };
   const getBuildingHeight = (index: number) => 280 + hash(index) * 140;
   const getMidBuildingHeight = (index: number) => 300 + hash(index + 100) * 120;
 
   function triggerAction() {
+    initAudio();
     if (isGameOver || !isPlaying) { startGame(); return; }
     if (isPaused) return;
 
     if (playerWorldY >= GROUND_Y - 5) {
       playerVy = JUMP_FORCE;
       isSwinging = false;
+      playSound('jump');
     } else if (!isSwinging) {
       const fgWidth = 200;
       const startIdx = Math.floor(cameraX / fgWidth);
@@ -76,6 +138,7 @@
       }
       if (bestAnchor) {
         isSwinging = true;
+        playSound('shoot');
         anchorWorldX = bestAnchor.worldX;
         anchorWorldY = bestAnchor.worldY;
         const dx = anchorWorldX - playerWorldX;
@@ -93,13 +156,32 @@
   }
 
   function shootWeb() {
-    if (isPlaying && !isGameOver && goblinActive) {
+    initAudio();
+    if (isPlaying && !isGameOver && activeVillain) {
+      playSound('shoot');
       attackProjectiles.push({ 
         worldX: playerWorldX + 20, 
         worldY: playerWorldY + 10, 
         vx: 1200, 
         isBomb: false 
       });
+    }
+  }
+
+  function triggerZipline() {
+    initAudio();
+    if (isGameOver || !isPlaying || isPaused) return;
+    if (!isZiplining) {
+       const localX = playerWorldX % 200;
+       if (localX > 185) return; // Not under a roof
+
+       playerVy = -1100;
+       isZiplining = true;
+       isSwinging = false;
+       playSound('jump');
+       ziplineAnchorWorldX = playerWorldX;
+       const roofIdx = Math.floor(ziplineAnchorWorldX / 200);
+       ziplineAnchorWorldY = GROUND_Y + 50 - getBuildingHeight(roofIdx);
     }
   }
 
@@ -110,6 +192,9 @@
     } else if (e.code === 'ArrowRight') {
       e.preventDefault();
       shootWeb();
+    } else if (e.code === 'ArrowUp') {
+      e.preventDefault();
+      triggerZipline();
     } else if (e.code === 'Escape') {
       e.preventDefault();
       if (isPlaying && !isGameOver) isPaused = !isPaused;
@@ -123,19 +208,27 @@
   function handlePointerDown(e: PointerEvent) {
     e.preventDefault();
     touchStartX = e.clientX;
+    touchStartY = e.clientY;
     if (!isActionPressed) { isActionPressed = true; triggerAction(); }
   }
 
   function handlePointerUp(e: PointerEvent) {
     e.preventDefault();
     const dx = e.clientX - touchStartX;
-    if (dx > 40) shootWeb();
+    const dy = e.clientY - touchStartY;
+    
+    if (dy < -50 && Math.abs(dx) < 50) {
+      triggerZipline();
+    } else if (dx > 40) {
+      shootWeb();
+    }
     
     isActionPressed = false;
     releaseAction();
   }
 
   function startGame() {
+    initAudio();
     isPlaying = true;
     isPaused = false;
     isGameOver = false;
@@ -147,14 +240,17 @@
     playerVy = 0;
     cameraX = 0;
     isSwinging = false;
+    isZiplining = false;
     obstacles = [];
     nextObstacleWorldX = 800;
     collectibles = [];
     nextCollectibleWorldX = 600;
     
-    goblinActive = false;
-    goblinHealth = 3;
-    goblinDefeated = false;
+    villainQueue = ['goblin', 'docock', 'scorpion'].sort(() => Math.random() - 0.5);
+    activeVillain = null;
+    activeVillainHealth = 0;
+    nextVillainScoreThreshold = 1000;
+    
     projectiles = [];
     attackProjectiles = [];
   }
@@ -168,6 +264,21 @@
     spideyImg.src = '/spidey.svg';
     let imgLoaded = false;
     spideyImg.onload = () => imgLoaded = true;
+
+    const goblinImg = new Image();
+    goblinImg.src = '/goblin.svg';
+    let goblinLoaded = false;
+    goblinImg.onload = () => goblinLoaded = true;
+    
+    const docOckImg = new Image();
+    docOckImg.src = '/docock.svg';
+    let docOckLoaded = false;
+    docOckImg.onload = () => docOckLoaded = true;
+    
+    const scorpionImg = new Image();
+    scorpionImg.src = '/scorpion.svg';
+    let scorpionLoaded = false;
+    scorpionImg.onload = () => scorpionLoaded = true;
     
     let animationFrameId: number;
     let lastTime = performance.now();
@@ -213,6 +324,20 @@
         isSwinging = false;
       }
       
+      if (isZiplining) {
+        if (playerVy >= 0) isZiplining = false;
+        ziplineAnchorWorldX = playerWorldX; // Anchor stays directly above
+        const roofIdx = Math.floor(ziplineAnchorWorldX / 200);
+        ziplineAnchorWorldY = GROUND_Y + 50 - getBuildingHeight(roofIdx);
+        
+        // Cap jump height to the roof
+        if (playerWorldY < ziplineAnchorWorldY) {
+          playerWorldY = ziplineAnchorWorldY;
+          playerVy = 0;
+          isZiplining = false;
+        }
+      }
+      
       const targetCameraX = playerWorldX - 150;
       cameraX += GAME_SPEED * dt;
       if (targetCameraX > cameraX) cameraX += (targetCameraX - cameraX) * 5 * dt;
@@ -221,29 +346,52 @@
       if (playerWorldX < cameraX - 40) {
         isPlaying = false;
         isGameOver = true;
+        playSound('bomb');
       }
 
-      // Boss logic
-      if (!goblinDefeated && score >= 1000 && !goblinActive) {
-        goblinActive = true;
-        goblinHealth = 3;
+      // Boss Logic
+      if (!activeVillain && villainQueue.length > 0 && score >= nextVillainScoreThreshold) {
+        activeVillain = villainQueue.shift()!;
+        bossPhase = 0;
+        if (activeVillain === 'goblin') activeVillainHealth = 3;
+        else if (activeVillain === 'docock') activeVillainHealth = 5;
+        else if (activeVillain === 'scorpion') activeVillainHealth = 4;
       }
 
-      let goblinScreenX = 650;
-      let goblinScreenY = 0;
+      let bossScreenX = 650;
+      let bossScreenY = 0;
       
-      if (goblinActive) {
-        goblinPhase += dt * 3;
-        goblinScreenY = 150 + Math.sin(goblinPhase) * 100;
-        
+      if (activeVillain === 'goblin') {
+        bossPhase += dt * 3;
+        bossScreenY = 150 + Math.sin(bossPhase) * 100;
         if (Math.random() < 0.015) {
            projectiles.push({
-             worldX: cameraX + goblinScreenX,
-             worldY: goblinScreenY + 20,
+             worldX: cameraX + bossScreenX,
+             worldY: bossScreenY + 20,
              vx: Math.random() * -100 - 100,
              vy: -200 + Math.random() * -200,
              isBomb: true
            });
+        }
+      } else if (activeVillain === 'docock') {
+        bossPhase += dt * 2;
+        bossScreenY = 100 + Math.sin(bossPhase) * 60;
+      } else if (activeVillain === 'scorpion') {
+        bossPhase += dt * 4;
+        bossScreenX = 400 + Math.sin(bossPhase) * 200; // Dash back and forth
+        bossScreenY = GROUND_Y - 30; // Level with Spidey (bottom aligns with ground)
+        
+        // Melee collision check
+        const playerScreenX = playerWorldX - cameraX;
+        if (
+          playerScreenX < bossScreenX + 50 && playerScreenX + 40 > bossScreenX + 20 &&
+          playerWorldY < bossScreenY + 60 && playerWorldY + 40 > bossScreenY + 10
+        ) {
+          isPlaying = false;
+          isGameOver = true;
+          playSound('bomb');
+          ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
+          ctx.fillRect(0, 0, 800, 450);
         }
       }
 
@@ -254,26 +402,31 @@
         if (p.worldX > cameraX + 800) {
           attackProjectiles.splice(i, 1);
         } else if (
-          goblinActive && 
-          p.worldX > cameraX + goblinScreenX && p.worldX < cameraX + goblinScreenX + 50 &&
-          p.worldY > goblinScreenY && p.worldY < goblinScreenY + 60
+          activeVillain && 
+          p.worldX > cameraX + bossScreenX - 20 && p.worldX < cameraX + bossScreenX + 60 &&
+          p.worldY > bossScreenY - 20 && p.worldY < bossScreenY + 60
         ) {
-           goblinHealth -= 1;
+           playSound('hit');
            attackProjectiles.splice(i, 1);
-           if (goblinHealth <= 0) {
-              goblinActive = false;
-              goblinDefeated = true;
-              score += 1000;
+           
+           activeVillainHealth -= 1;
+           if (activeVillainHealth <= 0) {
+              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : 1500);
+              score += defeatScore;
+              activeVillain = null;
+              nextVillainScoreThreshold = score + 1000;
            }
         }
       }
 
-      // Enemy projectiles (bombs)
+      // Enemy projectiles (bombs/acid)
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
         p.worldX += p.vx * dt;
-        p.vy = (p.vy || 0) + GRAVITY * 0.4 * dt; // slight arc
-        p.worldY += p.vy * dt;
+        if (!p.isAcid) {
+          p.vy = (p.vy || 0) + GRAVITY * 0.4 * dt;
+          p.worldY += p.vy * dt;
+        }
         
         if (p.worldX < cameraX - 50 || p.worldY > GROUND_Y + 50) {
           projectiles.splice(i, 1);
@@ -286,21 +439,32 @@
         ) {
           isPlaying = false;
           isGameOver = true;
+          playSound('bomb');
           ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
           ctx.fillRect(0, 0, 800, 450);
           break;
         }
       }
 
-      // Spawning obstacles (only if goblin is not active, else he throws bombs)
-      if (!goblinActive && cameraX > nextObstacleWorldX - 800) {
+      // Spawning obstacles
+      if (activeVillain !== 'goblin' && activeVillain !== 'scorpion' && cameraX > nextObstacleWorldX - 800) {
+        let obsType = Math.random() > 0.5 ? 'hydrant' : 'trash';
+        let obsWidth = Math.random() > 0.5 ? 25 : 35;
+        let obsHeight = Math.random() > 0.5 ? 40 : 50;
+        
+        if (activeVillain === 'docock') {
+          obsType = 'tentacle';
+          obsWidth = 30;
+          obsHeight = 90 + Math.random() * 40;
+        }
+
         obstacles.push({
           worldX: nextObstacleWorldX, 
-          width: Math.random() > 0.5 ? 25 : 35,
-          height: Math.random() > 0.5 ? 40 : 50, 
-          type: Math.random() > 0.5 ? 'hydrant' : 'trash'
+          width: obsWidth,
+          height: obsHeight, 
+          type: obsType as any
         });
-        nextObstacleWorldX += 400 + Math.random() * 500;
+        nextObstacleWorldX += (activeVillain === 'docock' ? 250 : 400) + Math.random() * 400;
       }
 
       if (cameraX > nextCollectibleWorldX - 800) {
@@ -377,6 +541,7 @@
         ) {
           c.collected = true;
           score += 100;
+          playSound('collect');
         }
       }
 
@@ -385,10 +550,19 @@
         const screenX = obs.worldX - cameraX;
         if (screenX < -obs.width) { obstacles.splice(i, 1); continue; }
         
-        ctx.fillStyle = obs.type === 'hydrant' ? '#ff3333' : '#666677';
-        const obsY = GROUND_Y + 40 - obs.height;
-        ctx.fillRect(screenX, obsY, obs.width, obs.height);
+        if (obs.type === 'tentacle') {
+          ctx.fillStyle = '#666677';
+          const obsY = GROUND_Y + 40 - obs.height;
+          ctx.fillRect(screenX, obsY, obs.width, obs.height);
+          ctx.fillStyle = '#9999aa';
+          ctx.fillRect(screenX + 8, obsY, 4, obs.height);
+        } else {
+          ctx.fillStyle = obs.type === 'hydrant' ? '#ff3333' : '#666677';
+          const obsY = GROUND_Y + 40 - obs.height;
+          ctx.fillRect(screenX, obsY, obs.width, obs.height);
+        }
         
+        const obsY = GROUND_Y + 40 - obs.height;
         const playerScreenX = playerWorldX - cameraX;
         if (
           playerScreenX < screenX + obs.width && playerScreenX + 40 > screenX &&
@@ -396,27 +570,38 @@
         ) {
           isPlaying = false;
           isGameOver = true;
+          playSound('bomb');
           ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
           ctx.fillRect(0, 0, 800, 450);
           break;
         }
       }
 
-      if (goblinActive) {
-        ctx.fillStyle = '#666677';
-        ctx.fillRect(goblinScreenX - 10, goblinScreenY + 40, 70, 10);
-        ctx.fillStyle = '#00aa00';
-        ctx.fillRect(goblinScreenX, goblinScreenY, 50, 40);
-        ctx.fillStyle = '#660066';
-        ctx.fillRect(goblinScreenX + 5, goblinScreenY - 15, 30, 20);
-        ctx.fillStyle = '#ffff00';
-        ctx.fillRect(goblinScreenX + 5, goblinScreenY - 10, 10, 5);
+      if (activeVillain) {
+        if (activeVillain === 'goblin') {
+          if (goblinLoaded) ctx.drawImage(goblinImg, bossScreenX, bossScreenY, 50, 50);
+          ctx.fillStyle = '#666677';
+          ctx.fillRect(bossScreenX - 10, bossScreenY + 45, 70, 10);
+        } else if (activeVillain === 'docock') {
+          if (docOckLoaded) ctx.drawImage(docOckImg, bossScreenX, bossScreenY, 60, 60);
+          ctx.strokeStyle = '#888899';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(bossScreenX + 20, bossScreenY + 20); ctx.lineTo(bossScreenX - 30, bossScreenY - 40);
+          ctx.moveTo(bossScreenX + 20, bossScreenY + 20); ctx.lineTo(bossScreenX + 70, bossScreenY - 40);
+          ctx.moveTo(bossScreenX + 20, bossScreenY + 40); ctx.lineTo(bossScreenX - 20, bossScreenY + 90);
+          ctx.moveTo(bossScreenX + 20, bossScreenY + 40); ctx.lineTo(bossScreenX + 60, bossScreenY + 90);
+          ctx.stroke();
+        } else if (activeVillain === 'scorpion') {
+          if (scorpionLoaded) ctx.drawImage(scorpionImg, bossScreenX, bossScreenY, 70, 70);
+        }
         
         // Health bar
         ctx.fillStyle = 'red';
-        ctx.fillRect(goblinScreenX, goblinScreenY - 30, 50, 6);
+        ctx.fillRect(bossScreenX - 10, bossScreenY - 20, 60, 6);
         ctx.fillStyle = '#00ff00';
-        ctx.fillRect(goblinScreenX, goblinScreenY - 30, (goblinHealth / 3) * 50, 6);
+        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : 4);
+        ctx.fillRect(bossScreenX - 10, bossScreenY - 20, (activeVillainHealth / maxH) * 60, 6);
       }
 
       for (const p of attackProjectiles) {
@@ -432,12 +617,17 @@
 
       for (const p of projectiles) {
         const px = p.worldX - cameraX;
-        ctx.fillStyle = '#ff6600';
         ctx.beginPath();
         ctx.arc(px + 10, p.worldY + 10, 10, 0, Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = '#00ff00';
-        ctx.fillRect(px + 8, p.worldY - 5, 4, 6);
+        if (p.isAcid) {
+          ctx.fillStyle = '#33cc33';
+          ctx.fill();
+        } else {
+          ctx.fillStyle = '#ff6600';
+          ctx.fill();
+          ctx.fillStyle = '#00ff00';
+          ctx.fillRect(px + 8, p.worldY - 5, 4, 6);
+        }
       }
 
       const playerScreenX = playerWorldX - cameraX;
@@ -452,6 +642,16 @@
         ctx.stroke();
         ctx.lineWidth = 6;
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.stroke();
+      }
+
+      if (isZiplining && !isGameOver) {
+        const anchorScreenX = ziplineAnchorWorldX - cameraX;
+        ctx.beginPath();
+        ctx.moveTo(playerScreenX + 20, playerWorldY + 20);
+        ctx.lineTo(anchorScreenX, ziplineAnchorWorldY);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
         ctx.stroke();
       }
 
@@ -475,8 +675,8 @@
 <div class="game-container">
   <div class="hud">
     <div class="score">{scoreMessage}</div>
-    {#if goblinActive}
-      <div class="boss-warning">WARNING: GREEN GOBLIN!</div>
+    {#if activeVillain}
+      <div class="boss-warning">WARNING: {activeVillain.toUpperCase()}!</div>
     {/if}
   </div>
   
@@ -493,7 +693,7 @@
   {#if !isPlaying && !isGameOver}
     <div class="overlay">
       <h1>Spidey Web Runner</h1>
-      <p class="instructions">HOLD SPACE or TAP to Swing!<br>RIGHT ARROW or SWIPE RIGHT to Shoot Web!</p>
+      <p class="instructions">HOLD SPACE or TAP to Swing!<br>RIGHT ARROW or SWIPE RIGHT to Shoot Web!<br>UP ARROW or SWIPE UP to Zipline Jump!</p>
       <button onclick={startGame}>Start Game</button>
     </div>
   {:else if isGameOver}
