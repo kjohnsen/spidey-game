@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { base } from '$app/paths';
 
   // UI state
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -246,7 +247,7 @@
     collectibles = [];
     nextCollectibleWorldX = 600;
     
-    villainQueue = ['goblin', 'docock', 'scorpion', 'carnage'].sort(() => Math.random() - 0.5);
+    villainQueue = ['goblin', 'hobgoblin', 'docock', 'scorpion', 'carnage'].sort(() => Math.random() - 0.5);
     activeVillain = null;
     activeVillainHealth = 0;
     nextVillainScoreThreshold = 1000;
@@ -261,29 +262,34 @@
     if (!ctx) return;
     
     const spideyImg = new Image();
-    spideyImg.src = '/spidey.svg';
+    spideyImg.src = `${base}/spidey.svg`;
     let imgLoaded = false;
     spideyImg.onload = () => imgLoaded = true;
 
     const goblinImg = new Image();
-    goblinImg.src = '/goblin.svg';
+    goblinImg.src = `${base}/goblin.svg`;
     let goblinLoaded = false;
     goblinImg.onload = () => goblinLoaded = true;
     
     const docOckImg = new Image();
-    docOckImg.src = '/docock.svg';
+    docOckImg.src = `${base}/docock.svg`;
     let docOckLoaded = false;
     docOckImg.onload = () => docOckLoaded = true;
     
     const scorpionImg = new Image();
-    scorpionImg.src = '/scorpion.svg';
+    scorpionImg.src = `${base}/scorpion.svg`;
     let scorpionLoaded = false;
     scorpionImg.onload = () => scorpionLoaded = true;
 
     const carnageImg = new Image();
-    carnageImg.src = '/carnage.svg';
+    carnageImg.src = `${base}/carnage.svg`;
     let carnageLoaded = false;
     carnageImg.onload = () => carnageLoaded = true;
+
+    const hobgoblinImg = new Image();
+    hobgoblinImg.src = `${base}/hobgoblin.svg`;
+    let hobgoblinLoaded = false;
+    hobgoblinImg.onload = () => hobgoblinLoaded = true;
     
     let animationFrameId: number;
     let lastTime = performance.now();
@@ -359,6 +365,7 @@
         activeVillain = villainQueue.shift()!;
         bossPhase = 0;
         if (activeVillain === 'goblin') activeVillainHealth = 3;
+        else if (activeVillain === 'hobgoblin') activeVillainHealth = 4;
         else if (activeVillain === 'docock') activeVillainHealth = 5;
         else if (activeVillain === 'scorpion') activeVillainHealth = 4;
         else if (activeVillain === 'carnage') activeVillainHealth = 6;
@@ -376,6 +383,18 @@
              worldY: bossScreenY + 20,
              vx: Math.random() * -100 - 100,
              vy: -200 + Math.random() * -200,
+             isBomb: true
+           });
+        }
+      } else if (activeVillain === 'hobgoblin') {
+        bossPhase += dt * 4;
+        bossScreenY = 120 + Math.sin(bossPhase) * 120;
+        if (Math.random() < 0.02) {
+           projectiles.push({
+             worldX: cameraX + bossScreenX,
+             worldY: bossScreenY + 20,
+             vx: Math.random() * -150 - 150,
+             vy: -150 + Math.random() * -150,
              isBomb: true
            });
         }
@@ -433,7 +452,7 @@
            
            activeVillainHealth -= 1;
            if (activeVillainHealth <= 0) {
-              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : (activeVillain === 'carnage' ? 2500 : 1500));
+              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : (activeVillain === 'carnage' ? 2500 : (activeVillain === 'hobgoblin' ? 1200 : 1500)));
               score += defeatScore;
               activeVillain = null;
               nextVillainScoreThreshold = score + 1000;
@@ -469,7 +488,7 @@
       }
 
       // Spawning obstacles
-      if (activeVillain !== 'goblin' && activeVillain !== 'scorpion' && activeVillain !== 'carnage' && cameraX > nextObstacleWorldX - 800) {
+      if (activeVillain !== 'goblin' && activeVillain !== 'hobgoblin' && activeVillain !== 'scorpion' && activeVillain !== 'carnage' && cameraX > nextObstacleWorldX - 800) {
         let obsType = Math.random() > 0.5 ? 'hydrant' : 'trash';
         let obsWidth = Math.random() > 0.5 ? 25 : 35;
         let obsHeight = Math.random() > 0.5 ? 40 : 50;
@@ -604,6 +623,10 @@
           if (goblinLoaded) ctx.drawImage(goblinImg, bossScreenX, bossScreenY, 50, 50);
           ctx.fillStyle = '#666677';
           ctx.fillRect(bossScreenX - 10, bossScreenY + 45, 70, 10);
+        } else if (activeVillain === 'hobgoblin') {
+          if (hobgoblinLoaded) ctx.drawImage(hobgoblinImg, bossScreenX, bossScreenY, 50, 50);
+          ctx.fillStyle = '#cc5500';
+          ctx.fillRect(bossScreenX - 10, bossScreenY + 45, 70, 10);
         } else if (activeVillain === 'docock') {
           if (docOckLoaded) ctx.drawImage(docOckImg, bossScreenX, bossScreenY, 60, 60);
           ctx.strokeStyle = '#888899';
@@ -631,7 +654,7 @@
         ctx.fillStyle = 'red';
         ctx.fillRect(bossScreenX - 10, bossScreenY - 20, 60, 6);
         ctx.fillStyle = '#00ff00';
-        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : (activeVillain === 'carnage' ? 6 : 4));
+        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : (activeVillain === 'carnage' ? 6 : (activeVillain === 'hobgoblin' ? 4 : 4)));
         ctx.fillRect(bossScreenX - 10, bossScreenY - 20, (activeVillainHealth / maxH) * 60, 6);
       }
 
