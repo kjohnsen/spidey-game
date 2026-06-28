@@ -37,9 +37,12 @@
   let collectibles: Collectible[] = [];
   let nextCollectibleWorldX = 600;
 
-  // Increased building height for better swinging clearance
-  const getBuildingHeight = (index: number) => 250 + (Math.sin(index * 12.3) * 100);
-  const getMidBuildingHeight = (index: number) => 300 + (Math.cos(index * 8.7) * 120);
+  // Pseudo-random hash for varied but persistent heights
+  const hash = (n: number) => { let s = Math.sin(n) * 43758.5453123; return s - Math.floor(s); };
+  
+  // Taller and more randomized buildings (280 to 420px height)
+  const getBuildingHeight = (index: number) => 280 + hash(index) * 140;
+  const getMidBuildingHeight = (index: number) => 300 + hash(index + 100) * 120;
 
   function triggerAction() {
     if (isGameOver || !isPlaying) {
@@ -78,6 +81,10 @@
 
   function releaseAction() {
     isSwinging = false;
+    // Cut jump short if releasing while moving upwards
+    if (playerVy < -100 && playerWorldY < GROUND_Y - 5) {
+      playerVy *= 0.4;
+    }
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -153,7 +160,8 @@
       playerWorldY += playerVy * dt;
 
       if (isSwinging) {
-        if (playerWorldX > anchorWorldX) {
+        // Automatically release only when swinging above the anchor (horizontal web)
+        if (playerWorldY <= anchorWorldY) {
           isSwinging = false;
         } else {
           const dx = playerWorldX - anchorWorldX;
@@ -311,9 +319,6 @@
       }
 
       if (imgLoaded) {
-        // Draw white background for eyes
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(playerScreenX + 5, playerWorldY + 15, 30, 15);
         ctx.drawImage(spideyImg, playerScreenX, playerWorldY, 40, 40);
       } else {
         ctx.fillStyle = '#e60000';
