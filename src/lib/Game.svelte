@@ -10,11 +10,15 @@
   let isGameOver = $state(false);
 
   let scoreMessage = $derived(`Score: ${Math.floor(score)}`);
+  
+  let difficulty = $state(2);
+  let playerHealth = $state(3);
+  let invincibilityTimer = 0;
 
   // Game constants
   const GRAVITY = 1800;
   const JUMP_FORCE = -700;
-  const GAME_SPEED = 400;
+  let GAME_SPEED = 400;
   const GROUND_Y = 350;
 
   // Physics state
@@ -235,6 +239,10 @@
     isGameOver = false;
     score = 0;
     
+    GAME_SPEED = 300 + difficulty * 100;
+    playerHealth = 4 - difficulty; // Easy: 3, Med: 2, Hard: 1
+    invincibilityTimer = 0;
+    
     playerWorldX = 100;
     playerWorldY = GROUND_Y;
     playerVx = GAME_SPEED;
@@ -300,6 +308,8 @@
       lastTime = time;
 
       if (isPaused || !isPlaying || isGameOver) return;
+      
+      if (invincibilityTimer > 0) invincibilityTimer -= dt;
 
       // Physics
       playerVy += GRAVITY * dt;
@@ -354,7 +364,23 @@
       if (targetCameraX > cameraX) cameraX += (targetCameraX - cameraX) * 5 * dt;
       score += (cameraX * dt) / 10;
       
+      const takeDamage = () => {
+        if (invincibilityTimer > 0) return;
+        playerHealth -= 1;
+        if (playerHealth <= 0) {
+          isPlaying = false;
+          isGameOver = true;
+          playSound('bomb');
+          ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
+          ctx.fillRect(0, 0, 800, 450);
+        } else {
+          playSound('hit');
+          invincibilityTimer = 1.0;
+        }
+      };
+      
       if (playerWorldX < cameraX - 40) {
+        playerHealth = 0;
         isPlaying = false;
         isGameOver = true;
         playSound('bomb');
@@ -412,11 +438,7 @@
           playerScreenX < bossScreenX + 50 && playerScreenX + 40 > bossScreenX + 20 &&
           playerWorldY < bossScreenY + 60 && playerWorldY + 40 > bossScreenY + 10
         ) {
-          isPlaying = false;
-          isGameOver = true;
-          playSound('bomb');
-          ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
-          ctx.fillRect(0, 0, 800, 450);
+          takeDamage();
         }
       } else if (activeVillain === 'carnage') {
         bossPhase += dt * 5;
@@ -478,12 +500,8 @@
           p.worldX < playerWorldX + 35 && p.worldX + 15 > playerWorldX &&
           p.worldY < playerWorldY + 35 && p.worldY + 15 > playerWorldY
         ) {
-          isPlaying = false;
-          isGameOver = true;
-          playSound('bomb');
-          ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
-          ctx.fillRect(0, 0, 800, 450);
-          break;
+          projectiles.splice(i, 1);
+          takeDamage();
         }
       }
 
@@ -522,11 +540,25 @@
 
       const midScroll = cameraX * 0.5;
       const startMidIdx = Math.floor(midScroll / 120);
-      ctx.fillStyle = '#1a1a2e';
       for (let i = 0; i < 9; i++) {
         const idx = startMidIdx + i;
         const h = getMidBuildingHeight(idx);
-        ctx.fillRect((idx * 120) - (midScroll % 120), GROUND_Y + 50 - h, 110, h);
+        const midScreenX = (idx * 120) - (midScroll % 120);
+        const midY = GROUND_Y + 50 - h;
+        
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(midScreenX, midY, 110, h);
+        
+        // Midground windows
+        const mCols = 3;
+        const mRows = Math.floor(h / 40);
+        for (let r = 0; r < mRows; r++) {
+          for (let c = 0; c < mCols; c++) {
+            const isLit = hash(idx * 100 + r * 10 + c) > 0.4;
+            ctx.fillStyle = isLit ? '#232338' : '#141424';
+            ctx.fillRect(midScreenX + 15 + c * 30, midY + 20 + r * 40, 15, 25);
+          }
+        }
       }
 
       const startFgIdx = Math.floor(cameraX / 200);
@@ -535,8 +567,21 @@
         const h = getBuildingHeight(idx);
         const screenX = idx * 200 - cameraX;
         const y = GROUND_Y + 50 - h;
+        
         ctx.fillStyle = '#2d2d44';
         ctx.fillRect(screenX, y, 185, h);
+        
+        // Foreground windows
+        const cols = 4;
+        const rows = Math.floor(h / 50);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const isLit = hash(idx * 100 + r * 10 + c) > 0.5;
+            ctx.fillStyle = isLit ? '#3b3b5c' : '#222233';
+            ctx.fillRect(screenX + 22 + c * 38, y + 25 + r * 50, 20, 30);
+          }
+        }
+
         ctx.fillStyle = '#004dcf';
         ctx.fillRect(screenX, y, 185, 6);
       }
@@ -609,12 +654,7 @@
           playerScreenX < screenX + obs.width && playerScreenX + 40 > screenX &&
           playerWorldY < obsY + obs.height && playerWorldY + 40 > obsY
         ) {
-          isPlaying = false;
-          isGameOver = true;
-          playSound('bomb');
-          ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
-          ctx.fillRect(0, 0, 800, 450);
-          break;
+          takeDamage();
         }
       }
 
@@ -715,7 +755,9 @@
       }
 
       if (imgLoaded) {
-        ctx.drawImage(spideyImg, playerScreenX, playerWorldY, 40, 40);
+        if (invincibilityTimer <= 0 || Math.floor(time / 100) % 2 === 0) {
+          ctx.drawImage(spideyImg, playerScreenX, playerWorldY, 40, 40);
+        }
       } else {
         ctx.fillStyle = '#e60000';
         ctx.fillRect(playerScreenX, playerWorldY, 40, 40);
@@ -733,6 +775,9 @@
 
 <div class="game-container">
   <div class="hud">
+    <div class="health">
+      {#each Array(playerHealth) as _}❤️{/each}
+    </div>
     <div class="score">{scoreMessage}</div>
     {#if activeVillain}
       <div class="boss-warning">WARNING: {activeVillain.toUpperCase()}!</div>
@@ -753,13 +798,23 @@
     <div class="overlay">
       <h1>Spidey Web Runner</h1>
       <p class="instructions">HOLD SPACE or TAP to Swing!<br>RIGHT ARROW or SWIPE RIGHT to Shoot Web!<br>UP ARROW or SWIPE UP to Zipline Jump!</p>
-      <button onclick={startGame}>Start Game</button>
+      <div class="difficulty-select">
+        <button class:active={difficulty === 1} onclick={() => difficulty = 1}>Easy</button>
+        <button class:active={difficulty === 2} onclick={() => difficulty = 2}>Medium</button>
+        <button class:active={difficulty === 3} onclick={() => difficulty = 3}>Hard</button>
+      </div>
+      <button class="start-btn" onclick={startGame}>Start Game</button>
     </div>
   {:else if isGameOver}
     <div class="overlay game-over">
       <h1>Game Over!</h1>
       <p class="instructions">You scored {Math.floor(score)} points</p>
-      <button onclick={startGame}>Try Again</button>
+      <div class="difficulty-select">
+        <button class:active={difficulty === 1} onclick={() => difficulty = 1}>Easy</button>
+        <button class:active={difficulty === 2} onclick={() => difficulty = 2}>Medium</button>
+        <button class:active={difficulty === 3} onclick={() => difficulty = 3}>Hard</button>
+      </div>
+      <button class="start-btn" onclick={startGame}>Try Again</button>
     </div>
   {:else if isPaused}
     <div class="overlay pause-menu">
@@ -845,11 +900,31 @@
     font-size: 20px;
     color: white;
     text-shadow: 2px 2px 0 var(--venom-black);
-    margin-bottom: 30px;
+    margin-bottom: 20px;
     line-height: 1.5;
   }
 
-  button {
+  .difficulty-select {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .difficulty-select button {
+    padding: 10px 20px;
+    font-size: 20px;
+    background: #333;
+    border: 2px solid #555;
+    box-shadow: none;
+  }
+  
+  .difficulty-select button.active {
+    background: var(--spidey-blue);
+    border-color: white;
+    box-shadow: 0 0 15px var(--spidey-blue);
+  }
+
+  .start-btn {
     padding: 15px 40px;
     font-size: 28px;
     font-weight: 900;
