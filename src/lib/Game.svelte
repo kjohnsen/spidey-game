@@ -45,12 +45,12 @@
 
   // Boss state
   let villainQueue: string[] = [];
-  let activeVillain: string | null = null;
+  let activeVillain = $state<string | null>(null);
   let activeVillainHealth = 0;
   let bossPhase = 0;
   let nextVillainScoreThreshold = 1000;
   
-  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; isAcid?: boolean; }
+  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; isAcid?: boolean; isSymbiote?: boolean; }
   let projectiles: Projectile[] = [];
   let attackProjectiles: Projectile[] = [];
 
@@ -246,7 +246,7 @@
     collectibles = [];
     nextCollectibleWorldX = 600;
     
-    villainQueue = ['goblin', 'docock', 'scorpion'].sort(() => Math.random() - 0.5);
+    villainQueue = ['goblin', 'docock', 'scorpion', 'carnage'].sort(() => Math.random() - 0.5);
     activeVillain = null;
     activeVillainHealth = 0;
     nextVillainScoreThreshold = 1000;
@@ -279,6 +279,11 @@
     scorpionImg.src = '/scorpion.svg';
     let scorpionLoaded = false;
     scorpionImg.onload = () => scorpionLoaded = true;
+
+    const carnageImg = new Image();
+    carnageImg.src = '/carnage.svg';
+    let carnageLoaded = false;
+    carnageImg.onload = () => carnageLoaded = true;
     
     let animationFrameId: number;
     let lastTime = performance.now();
@@ -356,11 +361,12 @@
         if (activeVillain === 'goblin') activeVillainHealth = 3;
         else if (activeVillain === 'docock') activeVillainHealth = 5;
         else if (activeVillain === 'scorpion') activeVillainHealth = 4;
+        else if (activeVillain === 'carnage') activeVillainHealth = 6;
       }
 
       let bossScreenX = 650;
       let bossScreenY = 0;
-      
+
       if (activeVillain === 'goblin') {
         bossPhase += dt * 3;
         bossScreenY = 150 + Math.sin(bossPhase) * 100;
@@ -393,7 +399,23 @@
           ctx.fillStyle = 'rgba(230, 0, 0, 0.5)';
           ctx.fillRect(0, 0, 800, 450);
         }
+      } else if (activeVillain === 'carnage') {
+        bossPhase += dt * 5;
+        bossScreenX = 600 + Math.cos(bossPhase * 0.5) * 50;
+        bossScreenY = (GROUND_Y - 50) - Math.abs(Math.sin(bossPhase)) * 180; // Bouncing wildly
+        if (Math.random() < 0.02) {
+           projectiles.push({
+             worldX: cameraX + bossScreenX,
+             worldY: bossScreenY + 20,
+             vx: Math.random() * -300 - 100,
+             vy: -100 + Math.random() * -150,
+             isBomb: true,
+             isAcid: false,
+             isSymbiote: true
+           });
+        }
       }
+
 
       // Attack projectiles (webs)
       for (let i = attackProjectiles.length - 1; i >= 0; i--) {
@@ -411,7 +433,7 @@
            
            activeVillainHealth -= 1;
            if (activeVillainHealth <= 0) {
-              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : 1500);
+              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : (activeVillain === 'carnage' ? 2500 : 1500));
               score += defeatScore;
               activeVillain = null;
               nextVillainScoreThreshold = score + 1000;
@@ -447,7 +469,7 @@
       }
 
       // Spawning obstacles
-      if (activeVillain !== 'goblin' && activeVillain !== 'scorpion' && cameraX > nextObstacleWorldX - 800) {
+      if (activeVillain !== 'goblin' && activeVillain !== 'scorpion' && activeVillain !== 'carnage' && cameraX > nextObstacleWorldX - 800) {
         let obsType = Math.random() > 0.5 ? 'hydrant' : 'trash';
         let obsWidth = Math.random() > 0.5 ? 25 : 35;
         let obsHeight = Math.random() > 0.5 ? 40 : 50;
@@ -594,13 +616,22 @@
           ctx.stroke();
         } else if (activeVillain === 'scorpion') {
           if (scorpionLoaded) ctx.drawImage(scorpionImg, bossScreenX, bossScreenY, 70, 70);
+        } else if (activeVillain === 'carnage') {
+          if (carnageLoaded) ctx.drawImage(carnageImg, bossScreenX, bossScreenY, 50, 50);
+          // Carnage tendrils
+          ctx.strokeStyle = '#990000';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(bossScreenX + 25, bossScreenY + 25); ctx.lineTo(bossScreenX + 50 + Math.random() * 30, bossScreenY - Math.random() * 30);
+          ctx.moveTo(bossScreenX + 25, bossScreenY + 25); ctx.lineTo(bossScreenX - Math.random() * 30, bossScreenY + 50 + Math.random() * 30);
+          ctx.stroke();
         }
         
         // Health bar
         ctx.fillStyle = 'red';
         ctx.fillRect(bossScreenX - 10, bossScreenY - 20, 60, 6);
         ctx.fillStyle = '#00ff00';
-        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : 4);
+        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : (activeVillain === 'carnage' ? 6 : 4));
         ctx.fillRect(bossScreenX - 10, bossScreenY - 20, (activeVillainHealth / maxH) * 60, 6);
       }
 
@@ -619,9 +650,14 @@
         const px = p.worldX - cameraX;
         ctx.beginPath();
         ctx.arc(px + 10, p.worldY + 10, 10, 0, Math.PI*2);
-        if (p.isAcid) {
+        if ((p as any).isAcid) {
           ctx.fillStyle = '#33cc33';
           ctx.fill();
+        } else if ((p as any).isSymbiote) {
+          ctx.fillStyle = '#990000';
+          ctx.fill();
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(px + 8, p.worldY - 5, 4, 6);
         } else {
           ctx.fillStyle = '#ff6600';
           ctx.fill();
