@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
+  import SettingsModal from '$lib/components/SettingsModal.svelte';
+  import { CHARACTERS, type CharacterId } from '$lib/characters';
 
   // UI state
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -8,12 +10,58 @@
   let isPlaying = $state(false);
   let isPaused = $state(false);
   let isGameOver = $state(false);
+  let showSettings = $state(false);
 
+  // Settings & Customization
+  let selectedCharacter = $state<CharacterId>('peter');
+  let difficulty = $state(2);
+  let soundEnabled = $state(true);
+
+  let activeCharacterConfig = $derived(CHARACTERS[selectedCharacter] || CHARACTERS.peter);
   let scoreMessage = $derived(`Score: ${Math.floor(score)}`);
   
-  let difficulty = $state(2);
   let playerHealth = $state(3);
   let invincibilityTimer = 0;
+
+  onMount(() => {
+    try {
+      const savedChar = localStorage.getItem('spidey_character') as CharacterId;
+      if (savedChar && CHARACTERS[savedChar]) {
+        selectedCharacter = savedChar;
+      }
+      const savedDiff = localStorage.getItem('spidey_difficulty');
+      if (savedDiff) {
+        difficulty = parseInt(savedDiff, 10) || 2;
+      }
+      const savedSound = localStorage.getItem('spidey_sound');
+      if (savedSound !== null) {
+        soundEnabled = savedSound === 'true';
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  });
+
+  function setCharacter(id: CharacterId) {
+    selectedCharacter = id;
+    try {
+      localStorage.setItem('spidey_character', id);
+    } catch (e) {}
+  }
+
+  function setDifficulty(lvl: number) {
+    difficulty = lvl;
+    try {
+      localStorage.setItem('spidey_difficulty', String(lvl));
+    } catch (e) {}
+  }
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    try {
+      localStorage.setItem('spidey_sound', String(soundEnabled));
+    } catch (e) {}
+  }
 
   // Game constants
   const GRAVITY = 1800;
@@ -71,6 +119,7 @@
   }
 
   function playSound(type: 'jump' | 'shoot' | 'hit' | 'collect' | 'bomb') {
+    if (!soundEnabled) return;
     if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -191,6 +240,14 @@
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    if (showSettings) {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        showSettings = false;
+      }
+      return;
+    }
+
     if (e.code === 'Space') {
       e.preventDefault();
       if (!isActionPressed) { isActionPressed = true; triggerAction(); }
@@ -207,10 +264,12 @@
   }
 
   function handleKeyUp(e: KeyboardEvent) {
+    if (showSettings) return;
     if (e.code === 'Space') { isActionPressed = false; releaseAction(); }
   }
 
   function handlePointerDown(e: PointerEvent) {
+    if (showSettings) return;
     e.preventDefault();
     touchStartX = e.clientX;
     touchStartY = e.clientY;
@@ -218,6 +277,7 @@
   }
 
   function handlePointerUp(e: PointerEvent) {
+    if (showSettings) return;
     e.preventDefault();
     const dx = e.clientX - touchStartX;
     const dy = e.clientY - touchStartY;
@@ -269,10 +329,20 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    const spideyImg = new Image();
-    spideyImg.src = `${base}/spidey.svg`;
-    let imgLoaded = false;
-    spideyImg.onload = () => imgLoaded = true;
+    const heroImages: Record<CharacterId, { img: HTMLImageElement; loaded: boolean }> = {
+      peter: { img: new Image(), loaded: false },
+      miles: { img: new Image(), loaded: false },
+      gwen: { img: new Image(), loaded: false }
+    };
+
+    heroImages.peter.img.src = `${base}/spidey.svg`;
+    heroImages.peter.img.onload = () => heroImages.peter.loaded = true;
+
+    heroImages.miles.img.src = `${base}/miles.svg`;
+    heroImages.miles.img.onload = () => heroImages.miles.loaded = true;
+
+    heroImages.gwen.img.src = `${base}/gwen.svg`;
+    heroImages.gwen.img.onload = () => heroImages.gwen.loaded = true;
 
     const goblinImg = new Image();
     goblinImg.src = `${base}/goblin.svg`;
@@ -737,10 +807,10 @@
         ctx.moveTo(playerScreenX + 20, playerWorldY + 20);
         ctx.lineTo(anchorScreenX, anchorWorldY);
         ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = activeCharacterConfig.webColor;
         ctx.stroke();
         ctx.lineWidth = 6;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.strokeStyle = activeCharacterConfig.glowColor;
         ctx.stroke();
       }
 
@@ -750,18 +820,19 @@
         ctx.moveTo(playerScreenX + 20, playerWorldY + 20);
         ctx.lineTo(anchorScreenX, ziplineAnchorWorldY);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = activeCharacterConfig.webColor;
         ctx.stroke();
       }
 
-      if (imgLoaded) {
+      const activeHeroAsset = heroImages[selectedCharacter];
+      if (activeHeroAsset && activeHeroAsset.loaded) {
         if (invincibilityTimer <= 0 || Math.floor(time / 100) % 2 === 0) {
-          ctx.drawImage(spideyImg, playerScreenX, playerWorldY, 40, 40);
+          ctx.drawImage(activeHeroAsset.img, playerScreenX, playerWorldY, 40, 40);
         }
       } else {
-        ctx.fillStyle = '#e60000';
+        ctx.fillStyle = activeCharacterConfig.fallbackFill;
         ctx.fillRect(playerScreenX, playerWorldY, 40, 40);
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = activeCharacterConfig.accentColor;
         ctx.fillRect(playerScreenX + 25, playerWorldY + 8, 12, 10);
       }
     };
@@ -783,6 +854,15 @@
       <div class="boss-warning">WARNING: {activeVillain.toUpperCase()}!</div>
     {/if}
   </div>
+
+  <button
+    class="settings-hud-btn"
+    type="button"
+    onclick={() => { if (isPlaying && !isGameOver) isPaused = true; showSettings = true; }}
+    aria-label="Open Settings"
+  >
+    ⚙️
+  </button>
   
   <canvas 
     bind:this={canvas} 
@@ -794,34 +874,60 @@
     style="touch-action: none;"
   ></canvas>
   
-  {#if !isPlaying && !isGameOver}
+  {#if !isPlaying && !isGameOver && !showSettings}
     <div class="overlay">
       <h1>Spidey Web Runner</h1>
+
+      <button
+        type="button"
+        class="hero-preview-badge"
+        style="--hero-border: {activeCharacterConfig.accentColor}; --hero-glow: {activeCharacterConfig.glowColor};"
+        onclick={() => showSettings = true}
+      >
+        <img src="{base}/{activeCharacterConfig.imageSrc}" alt={activeCharacterConfig.heroName} class="badge-avatar" />
+        <div class="badge-info">
+          <div class="badge-title">{activeCharacterConfig.heroName}</div>
+          <div class="badge-sub">{activeCharacterConfig.name} • Tap to Change Hero</div>
+        </div>
+      </button>
+
       <p class="instructions">HOLD SPACE or TAP to Swing!<br>RIGHT ARROW or SWIPE RIGHT to Shoot Web!<br>UP ARROW or SWIPE UP to Zipline Jump!</p>
-      <div class="difficulty-select">
-        <button class:active={difficulty === 1} onclick={() => difficulty = 1}>Easy</button>
-        <button class:active={difficulty === 2} onclick={() => difficulty = 2}>Medium</button>
-        <button class:active={difficulty === 3} onclick={() => difficulty = 3}>Hard</button>
+      
+      <div class="action-btn-row">
+        <button class="start-btn" onclick={startGame}>Start Game</button>
+        <button class="settings-menu-btn" onclick={() => showSettings = true}>⚙️ Settings</button>
       </div>
-      <button class="start-btn" onclick={startGame}>Start Game</button>
     </div>
-  {:else if isGameOver}
+  {:else if isGameOver && !showSettings}
     <div class="overlay game-over">
       <h1>Game Over!</h1>
-      <p class="instructions">You scored {Math.floor(score)} points</p>
-      <div class="difficulty-select">
-        <button class:active={difficulty === 1} onclick={() => difficulty = 1}>Easy</button>
-        <button class:active={difficulty === 2} onclick={() => difficulty = 2}>Medium</button>
-        <button class:active={difficulty === 3} onclick={() => difficulty = 3}>Hard</button>
+      <p class="instructions">You scored {Math.floor(score)} points with {activeCharacterConfig.heroName}</p>
+      <div class="action-btn-row">
+        <button class="start-btn" onclick={startGame}>Try Again</button>
+        <button class="settings-menu-btn" onclick={() => showSettings = true}>⚙️ Settings</button>
       </div>
-      <button class="start-btn" onclick={startGame}>Try Again</button>
     </div>
-  {:else if isPaused}
+  {:else if isPaused && !showSettings}
     <div class="overlay pause-menu">
       <h1>Paused</h1>
-      <p class="instructions">Take a breather, Spidey!</p>
-      <button onclick={() => isPaused = false}>Resume</button>
+      <p class="instructions">Take a breather, {activeCharacterConfig.heroName}!</p>
+      <div class="action-btn-row">
+        <button class="start-btn" onclick={() => isPaused = false}>Resume</button>
+        <button class="settings-menu-btn" onclick={() => showSettings = true}>⚙️ Settings</button>
+      </div>
     </div>
+  {/if}
+
+  {#if showSettings}
+    <SettingsModal
+      {selectedCharacter}
+      {difficulty}
+      {soundEnabled}
+      onSelectCharacter={setCharacter}
+      onChangeDifficulty={setDifficulty}
+      onToggleSound={toggleSound}
+      onClose={() => showSettings = false}
+    />
   {/if}
 </div>
 
@@ -857,6 +963,31 @@
     z-index: 10;
   }
 
+  .settings-hud-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 24px;
+    background: rgba(17, 17, 22, 0.7);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 15;
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;
+    padding: 0;
+  }
+
+  .settings-hud-btn:hover {
+    transform: scale(1.1) rotate(20deg);
+    border-color: var(--electro-yellow);
+    background: rgba(17, 17, 22, 0.95);
+  }
+
   .boss-warning {
     color: #ff3333;
     font-size: 24px;
@@ -882,65 +1013,110 @@
     backdrop-filter: blur(6px);
     z-index: 20;
     text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
   }
 
-  .pause-menu { background: rgba(17, 17, 22, 0.8); }
-  .game-over { background: rgba(230, 0, 0, 0.2); border: 5px solid var(--spidey-red); }
+  .pause-menu { background: rgba(17, 17, 22, 0.85); }
+  .game-over { background: rgba(230, 0, 0, 0.25); border: 5px solid var(--spidey-red); }
 
   h1 {
-    font-size: 48px;
+    font-size: 44px;
     color: var(--electro-yellow);
     text-shadow: 3px 3px 0 var(--venom-black), 0 0 15px rgba(255, 215, 0, 0.5);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
   
   .game-over h1 { color: white; text-shadow: 3px 3px 0 var(--spidey-red); }
 
+  .hero-preview-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(24, 24, 36, 0.85);
+    border: 2px solid var(--hero-border);
+    box-shadow: 0 0 15px var(--hero-glow);
+    padding: 8px 18px;
+    border-radius: 30px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .hero-preview-badge:hover {
+    transform: scale(1.05);
+  }
+
+  .badge-avatar {
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  }
+
+  .badge-info {
+    text-align: left;
+  }
+
+  .badge-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: white;
+  }
+
+  .badge-sub {
+    font-size: 11px;
+    color: #ffd700;
+  }
+
   .instructions {
-    font-size: 20px;
+    font-size: 18px;
     color: white;
     text-shadow: 2px 2px 0 var(--venom-black);
-    margin-bottom: 20px;
-    line-height: 1.5;
+    margin-bottom: 16px;
+    line-height: 1.4;
   }
 
-  .difficulty-select {
+  .action-btn-row {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-
-  .difficulty-select button {
-    padding: 10px 20px;
-    font-size: 20px;
-    background: #333;
-    border: 2px solid #555;
-    box-shadow: none;
-  }
-  
-  .difficulty-select button.active {
-    background: var(--spidey-blue);
-    border-color: white;
-    box-shadow: 0 0 15px var(--spidey-blue);
+    gap: 12px;
+    align-items: center;
   }
 
   .start-btn {
-    padding: 15px 40px;
-    font-size: 28px;
+    padding: 14px 36px;
+    font-size: 26px;
     font-weight: 900;
     color: white;
     background: var(--spidey-red);
-    border: 4px solid white;
+    border: 3px solid white;
     border-radius: 12px;
     cursor: pointer;
-    box-shadow: 0 6px 0 var(--spidey-blue);
+    box-shadow: 0 5px 0 var(--spidey-blue);
     transition: transform 0.1s, box-shadow 0.1s;
     text-transform: uppercase;
     letter-spacing: 1px;
   }
+
+  .settings-menu-btn {
+    padding: 14px 22px;
+    font-size: 20px;
+    font-weight: 800;
+    color: white;
+    background: #2b2b3d;
+    border: 3px solid #555577;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #181824;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+
+  .settings-menu-btn:hover {
+    border-color: var(--electro-yellow);
+  }
   
   button:active {
-    transform: translateY(6px);
-    box-shadow: 0 0 0 var(--spidey-blue);
+    transform: translateY(4px);
+    box-shadow: none !important;
   }
 </style>

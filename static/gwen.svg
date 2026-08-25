@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Outer White Hood -->
+  <path fill="#f8fafc" d="M256 20c-105 0-175 80-175 165c0 195 85 305 175 305s175-110 175-305c0-85-70-165-175-165"/>
+  <!-- Hood Inner Shadow / Lining -->
+  <path fill="#1a0b2e" d="M256 50c-75 0-130 65-130 135c0 145 60 225 130 225s130-80 130-225c0-70-55-135-130-135"/>
+  <!-- Inner White Mask Face -->
+  <path fill="#ffffff" d="M256 75c-60 0-105 55-105 115c0 115 50 180 105 180s105-65 105-180c0-60-45-115-105-115"/>
+  <!-- Magenta / Pink Hood Web Accents inside hood -->
+  <path stroke="#ff2a85" stroke-width="6" stroke-linecap="round" fill="none" d="M165 100 Q210 140 256 140 Q302 140 347 100 M145 160 Q200 190 256 190 Q312 190 367 160"/>
+  <!-- Gwen Eyes: Pink Rim -->
+  <path fill="#ff2a85" d="M148 180c6 26 28 75 76 104l-38 38c-53-33-50-116-38-142m216 0c12 26 15 109-38 142l-38-38c48-29 70-78 76-104"/>
+  <!-- Gwen Eyes: Cyan / White Core -->
+  <path fill="#00e5ff" d="M158 190c4.5 20 22 58 60 80l-30 30c-42-26-40-90-30-110m196 0c10 20 12 84-30 110l-30-30c38-22 55.5-60 60-80"/>
+  <path fill="#ffffff" d="M166 198c3.5 15 17 44 46 60l-22 22c-32-20-30-68-24-82m148 0c6 14 8 62-24 82l-22-22c29-16 42.5-45 46-60"/>
+</svg>
