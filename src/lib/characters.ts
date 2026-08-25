@@ -36,10 +36,10 @@ export const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     imageSrc: 'miles.svg',
     primaryColor: '#1c1c24',
     accentColor: '#e60000',
-    webColor: '#ffd700',
-    glowColor: 'rgba(255, 215, 0, 0.4)',
+    webColor: '#ff2233',
+    glowColor: 'rgba(230, 0, 0, 0.5)',
     fallbackFill: '#1c1c24',
-    description: 'Electrifying speed with venom-power webs!'
+    description: 'Electrifying speed with red venom-power webs!'
   },
   gwen: {
     id: 'gwen',

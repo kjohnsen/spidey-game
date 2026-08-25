@@ -769,12 +769,12 @@
       }
 
       for (const p of attackProjectiles) {
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = activeCharacterConfig.webColor;
         ctx.beginPath();
         ctx.arc(p.worldX - cameraX, p.worldY, 6, 0, Math.PI*2);
         ctx.fill();
         ctx.shadowBlur = 10;
-        ctx.shadowColor = '#ffffff';
+        ctx.shadowColor = activeCharacterConfig.glowColor;
         ctx.fill();
         ctx.shadowBlur = 0;
       }
