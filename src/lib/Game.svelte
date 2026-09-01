@@ -211,7 +211,7 @@
 
   function shootWeb() {
     initAudio();
-    if (isPlaying && !isGameOver && activeVillain) {
+    if (isPlaying && !isGameOver && !isPaused) {
       playSound('shoot');
       attackProjectiles.push({ 
         worldX: playerWorldX + 20, 
@@ -873,6 +873,33 @@
     onpointercancel={handlePointerUp}
     style="touch-action: none;"
   ></canvas>
+
+  {#if isPlaying && !isGameOver && !isPaused && !showSettings}
+    <div class="mobile-controls" aria-label="Action controls">
+      <button 
+        type="button" 
+        class="mobile-btn zipline-btn" 
+        onpointerdown={(e) => { e.preventDefault(); e.stopPropagation(); triggerZipline(); }}
+        onpointerup={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onclick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        aria-label="Zipline Jump"
+      >
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">ZIPLINE</span>
+      </button>
+      <button 
+        type="button" 
+        class="mobile-btn shoot-btn {activeVillain ? 'target-active' : ''}" 
+        onpointerdown={(e) => { e.preventDefault(); e.stopPropagation(); shootWeb(); }}
+        onpointerup={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onclick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        aria-label="Shoot Web"
+      >
+        <span class="btn-icon">🕸️</span>
+        <span class="btn-text">SHOOT</span>
+      </button>
+    </div>
+  {/if}
   
   {#if !isPlaying && !isGameOver && !showSettings}
     <div class="overlay">
@@ -891,7 +918,11 @@
         </div>
       </button>
 
-      <p class="instructions">HOLD SPACE or TAP to Swing!<br>RIGHT ARROW or SWIPE RIGHT to Shoot Web!<br>UP ARROW or SWIPE UP to Zipline Jump!</p>
+      <p class="instructions">
+        <strong>TAP / HOLD</strong> to Jump & Swing!<br>
+        <strong>🕸️ SHOOT</strong> (or &rarr; / Swipe Right) to Attack!<br>
+        <strong>⚡ ZIPLINE</strong> (or &uarr; / Swipe Up) to Zip to Roof!
+      </p>
       
       <div class="action-btn-row">
         <button class="start-btn" onclick={startGame}>Start Game</button>
@@ -1118,5 +1149,134 @@
   button:active {
     transform: translateY(4px);
     box-shadow: none !important;
+  }
+
+  /* Mobile On-Screen Action Controls */
+  .mobile-controls {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    z-index: 15;
+    user-select: none;
+    touch-action: none;
+    pointer-events: auto;
+  }
+
+  .mobile-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    backdrop-filter: blur(8px);
+    transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
+    padding: 0;
+  }
+
+  .shoot-btn {
+    background: radial-gradient(circle at 35% 35%, #ff3333, #aa0000);
+    border: 3px solid #ff7777;
+    box-shadow: 0 4px 14px rgba(230, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    color: white;
+  }
+
+  .shoot-btn.target-active {
+    border-color: #ffff00;
+    box-shadow: 0 0 16px #ff3333, inset 0 0 10px #ffff00;
+    animation: pulse-shoot 0.8s infinite alternate ease-in-out;
+  }
+
+  @keyframes pulse-shoot {
+    0% { transform: scale(1); filter: drop-shadow(0 0 2px #ff4444); }
+    100% { transform: scale(1.1); filter: drop-shadow(0 0 12px #ffff00); }
+  }
+
+  .zipline-btn {
+    background: radial-gradient(circle at 35% 35%, #0066ff, #002b80);
+    border: 3px solid #ffd700;
+    box-shadow: 0 4px 14px rgba(0, 77, 207, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    color: white;
+  }
+
+  .btn-icon {
+    font-size: 26px;
+    line-height: 1;
+    margin-bottom: 2px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  }
+
+  .btn-text {
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
+  }
+
+  .mobile-btn:active {
+    transform: scale(0.9) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  @media (max-width: 600px) {
+    .overlay {
+      padding: 10px;
+    }
+    h1 {
+      font-size: 26px;
+      margin-bottom: 4px;
+    }
+    .hero-preview-badge {
+      padding: 4px 12px;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+    .badge-avatar {
+      width: 28px;
+      height: 28px;
+    }
+    .badge-title {
+      font-size: 13px;
+    }
+    .badge-sub {
+      font-size: 10px;
+    }
+    .instructions {
+      font-size: 13px;
+      margin-bottom: 10px;
+      line-height: 1.3;
+    }
+    .start-btn {
+      padding: 8px 20px;
+      font-size: 18px;
+    }
+    .settings-menu-btn {
+      padding: 8px 14px;
+      font-size: 15px;
+    }
+    .mobile-controls {
+      right: 12px;
+      bottom: 12px;
+      gap: 10px;
+    }
+    .mobile-btn {
+      width: 58px;
+      height: 58px;
+    }
+    .btn-icon {
+      font-size: 22px;
+    }
+    .btn-text {
+      font-size: 9px;
+    }
   }
 </style>
