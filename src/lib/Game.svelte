@@ -103,7 +103,7 @@
   let bossPhase = 0;
   let nextVillainScoreThreshold = 1000;
   
-  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; isAcid?: boolean; isSymbiote?: boolean; }
+  interface Projectile { worldX: number; worldY: number; vx: number; vy?: number; isBomb: boolean; isAcid?: boolean; isSymbiote?: boolean; isVenomSymbiote?: boolean; }
   let projectiles: Projectile[] = [];
   let attackProjectiles: Projectile[] = [];
 
@@ -315,7 +315,7 @@
     collectibles = [];
     nextCollectibleWorldX = 600;
     
-    villainQueue = ['goblin', 'hobgoblin', 'docock', 'scorpion', 'carnage'].sort(() => Math.random() - 0.5);
+    villainQueue = ['goblin', 'hobgoblin', 'docock', 'scorpion', 'carnage', 'venom'].sort(() => Math.random() - 0.5);
     activeVillain = null;
     activeVillainHealth = 0;
     nextVillainScoreThreshold = 1000;
@@ -368,6 +368,11 @@
     hobgoblinImg.src = `${base}/hobgoblin.svg`;
     let hobgoblinLoaded = false;
     hobgoblinImg.onload = () => hobgoblinLoaded = true;
+
+    const venomImg = new Image();
+    venomImg.src = `${base}/venom.svg`;
+    let venomLoaded = false;
+    venomImg.onload = () => venomLoaded = true;
     
     let animationFrameId: number;
     let lastTime = performance.now();
@@ -465,6 +470,7 @@
         else if (activeVillain === 'docock') activeVillainHealth = 5;
         else if (activeVillain === 'scorpion') activeVillainHealth = 4;
         else if (activeVillain === 'carnage') activeVillainHealth = 6;
+        else if (activeVillain === 'venom') activeVillainHealth = 6;
       }
 
       let bossScreenX = 650;
@@ -525,6 +531,41 @@
              isSymbiote: true
            });
         }
+      } else if (activeVillain === 'venom') {
+        bossPhase += dt * 3;
+        const leapCycle = Math.sin(bossPhase);
+        if (leapCycle > 0) {
+          // High leaping pounce arc
+          bossScreenX = 520 + Math.cos(bossPhase) * 140;
+          bossScreenY = (GROUND_Y - 35) - Math.sin(leapCycle * Math.PI) * 160;
+        } else {
+          // Ground stalk: menacing dash forward and back
+          bossScreenX = 520 + Math.sin(bossPhase * 2) * 80;
+          bossScreenY = GROUND_Y - 25;
+        }
+
+        // Heavy melee collision check
+        const playerScreenX = playerWorldX - cameraX;
+        if (
+          playerScreenX < bossScreenX + 55 && playerScreenX + 40 > bossScreenX + 10 &&
+          playerWorldY < bossScreenY + 60 && playerWorldY + 40 > bossScreenY + 10
+        ) {
+          takeDamage();
+        }
+
+        // Launch dark purple symbiote projectiles
+        if (Math.random() < 0.025) {
+          projectiles.push({
+            worldX: cameraX + bossScreenX,
+            worldY: bossScreenY + 25,
+            vx: Math.random() * -180 - 180,
+            vy: -100 + Math.random() * -140,
+            isBomb: true,
+            isAcid: false,
+            isSymbiote: true,
+            isVenomSymbiote: true
+          });
+        }
       }
 
 
@@ -536,15 +577,15 @@
           attackProjectiles.splice(i, 1);
         } else if (
           activeVillain && 
-          p.worldX > cameraX + bossScreenX - 20 && p.worldX < cameraX + bossScreenX + 60 &&
-          p.worldY > bossScreenY - 20 && p.worldY < bossScreenY + 60
+          p.worldX > cameraX + bossScreenX - 20 && p.worldX < cameraX + bossScreenX + (activeVillain === 'venom' ? 70 : 60) &&
+          p.worldY > bossScreenY - 20 && p.worldY < bossScreenY + (activeVillain === 'venom' ? 70 : 60)
         ) {
            playSound('hit');
            attackProjectiles.splice(i, 1);
            
            activeVillainHealth -= 1;
            if (activeVillainHealth <= 0) {
-              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : (activeVillain === 'carnage' ? 2500 : (activeVillain === 'hobgoblin' ? 1200 : 1500)));
+              const defeatScore = activeVillain === 'goblin' ? 1000 : (activeVillain === 'docock' ? 2000 : (activeVillain === 'carnage' ? 2500 : (activeVillain === 'venom' ? 3000 : (activeVillain === 'hobgoblin' ? 1200 : 1500))));
               score += defeatScore;
               activeVillain = null;
               nextVillainScoreThreshold = score + 1000;
@@ -576,7 +617,7 @@
       }
 
       // Spawning obstacles
-      if (activeVillain !== 'goblin' && activeVillain !== 'hobgoblin' && activeVillain !== 'scorpion' && activeVillain !== 'carnage' && cameraX > nextObstacleWorldX - 800) {
+      if (activeVillain !== 'goblin' && activeVillain !== 'hobgoblin' && activeVillain !== 'scorpion' && activeVillain !== 'carnage' && activeVillain !== 'venom' && cameraX > nextObstacleWorldX - 800) {
         let obsType = Math.random() > 0.5 ? 'hydrant' : 'trash';
         let obsWidth = Math.random() > 0.5 ? 25 : 35;
         let obsHeight = Math.random() > 0.5 ? 40 : 50;
@@ -758,14 +799,33 @@
           ctx.moveTo(bossScreenX + 25, bossScreenY + 25); ctx.lineTo(bossScreenX + 50 + Math.random() * 30, bossScreenY - Math.random() * 30);
           ctx.moveTo(bossScreenX + 25, bossScreenY + 25); ctx.lineTo(bossScreenX - Math.random() * 30, bossScreenY + 50 + Math.random() * 30);
           ctx.stroke();
+        } else if (activeVillain === 'venom') {
+          if (venomLoaded) ctx.drawImage(venomImg, bossScreenX, bossScreenY, 65, 65);
+          // Venom writhing dark purple & black symbiote tendrils
+          ctx.strokeStyle = '#7b2cbf';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(bossScreenX + 25, bossScreenY + 20);
+          ctx.quadraticCurveTo(bossScreenX - 25, bossScreenY - 20, bossScreenX - 35 + Math.sin(time * 0.008) * 15, bossScreenY - 10 + Math.cos(time * 0.008) * 15);
+          ctx.moveTo(bossScreenX + 45, bossScreenY + 20);
+          ctx.quadraticCurveTo(bossScreenX + 85, bossScreenY - 15, bossScreenX + 90 + Math.cos(time * 0.007) * 15, bossScreenY - 5 + Math.sin(time * 0.007) * 15);
+          ctx.moveTo(bossScreenX + 15, bossScreenY + 45);
+          ctx.quadraticCurveTo(bossScreenX - 20, bossScreenY + 65, bossScreenX - 30 + Math.sin(time * 0.009) * 12, bossScreenY + 75);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#10002b';
+          ctx.lineWidth = 2;
+          ctx.stroke();
         }
         
         // Health bar
+        const hbWidth = activeVillain === 'venom' ? 70 : 60;
+        const hbX = activeVillain === 'venom' ? bossScreenX - 5 : bossScreenX - 10;
         ctx.fillStyle = 'red';
-        ctx.fillRect(bossScreenX - 10, bossScreenY - 20, 60, 6);
+        ctx.fillRect(hbX, bossScreenY - 20, hbWidth, 6);
         ctx.fillStyle = '#00ff00';
-        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : (activeVillain === 'carnage' ? 6 : (activeVillain === 'hobgoblin' ? 4 : 4)));
-        ctx.fillRect(bossScreenX - 10, bossScreenY - 20, (activeVillainHealth / maxH) * 60, 6);
+        const maxH = activeVillain === 'goblin' ? 3 : (activeVillain === 'docock' ? 5 : (activeVillain === 'carnage' ? 6 : (activeVillain === 'venom' ? 6 : (activeVillain === 'hobgoblin' ? 4 : 4))));
+        ctx.fillRect(hbX, bossScreenY - 20, (activeVillainHealth / maxH) * hbWidth, 6);
       }
 
       for (const p of attackProjectiles) {
@@ -786,6 +846,15 @@
         if ((p as any).isAcid) {
           ctx.fillStyle = '#33cc33';
           ctx.fill();
+        } else if ((p as any).isVenomSymbiote) {
+          ctx.fillStyle = '#240046';
+          ctx.fill();
+          ctx.strokeStyle = '#9d4edd';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#7b2cbf';
+          ctx.fillRect(px + 8, p.worldY - 4, 4, 8);
+          ctx.fillRect(px + 14, p.worldY + 8, 6, 3);
         } else if ((p as any).isSymbiote) {
           ctx.fillStyle = '#990000';
           ctx.fill();

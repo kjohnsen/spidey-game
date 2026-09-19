@@ -37,6 +37,13 @@ Designed to be ultra-simple for kids and functional on both desktop (keyboard/mo
 4. **Collectibles**:
    - Golden Spiders to increase score.
    - Web fluid refills.
+5. **Boss Battles (Villain Encounters)**:
+   - Encounters trigger periodically as the score threshold increases.
+   - **Green Goblin & Hobgoblin**: Swoop in on gliders and drop pumpkin bombs.
+   - **Doc Ock**: Hovers while spawning reaching tentacle obstacles on the ground.
+   - **Scorpion**: Dashes along the ground with high-speed melee charges.
+   - **Carnage**: Bounces erratically and flings red symbiote spike projectiles.
+   - **Venom**: Heavy symbiote heavyweight boss (6 HP) who leaps in high pounce arcs, charges across the ground, fires purple/black symbiote globules, and lashes out with writhing tendrils. Defeat awards 3,000 bonus points.
 
 ---
 
